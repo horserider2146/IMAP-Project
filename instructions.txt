@@ -1,0 +1,825 @@
+# Claude Code Prompt: Django ORM and Database Optimisation
+
+## Project Title
+**Django ORM and Database Optimisation Using the TVMaze API and PostgreSQL**
+
+## 1. Your Role
+
+Act as a beginner-friendly Python developer and teacher. Build this project completely, but keep all code as simple as possible.
+
+I am a Data Science student learning backend development and database optimisation. I need to understand every part of the project, not just obtain working code.
+
+**The most important coding rule is: use the simplest possible code.**
+
+Follow these rules strictly:
+- Use basic Python syntax that a beginner can understand.
+- Prefer straightforward functions and loops over complicated abstractions.
+- Avoid unnecessary classes, inheritance, decorators, design patterns, and advanced Python features.
+- Use simple variable names that clearly explain their purpose.
+- Keep functions short and easy to follow.
+- Do not write one-line code that combines many operations.
+- Avoid unnecessary helper files, dependencies, configuration layers, and boilerplate.
+- Do not introduce complicated architecture just to make the project look professional.
+- Use Django models where Django requires them, but keep the rest of the code procedural and straightforward.
+- Use comments to explain important operations in simple English.
+- Never sacrifice correctness or security for simplicity.
+- Do not use code that is more advanced than necessary for the project's requirements.
+
+Write the code as if you were teaching a student who understands basic Python but is new to Django, PostgreSQL, and database optimisation.
+
+## 2. Project Objective
+
+Build a complete Django application that:
+
+1. Downloads television show and episode data from the TVMaze API.
+2. Stores the data in a PostgreSQL database using the Django ORM.
+3. Demonstrates the N+1 query problem using deliberately inefficient queries.
+4. Fixes the N+1 query problem using `select_related()` and `prefetch_related()`.
+5. Adds database indexes to appropriate fields.
+6. Measures and compares performance before and after optimisation.
+7. Produces clear tables and visualisations showing the results.
+8. Explains the results and the trade-offs of each optimisation.
+
+The project must be executable on a Windows laptop with 16 GB RAM. Keep the setup suitable for a student project.
+
+## 3. Technology Stack
+
+Use the following technologies:
+
+- Python
+- Django
+- PostgreSQL
+- Django ORM
+- TVMaze API: https://www.tvmaze.com/api
+- `requests` for API requests
+- `time.perf_counter()` for elapsed-time measurements
+- Django's database query logging or `CaptureQueriesContext` for counting and inspecting queries
+- PostgreSQL `EXPLAIN ANALYZE` for examining query execution plans where appropriate
+- Matplotlib for simple performance graphs, if useful
+
+Use a stable Django version compatible with the installed Python version and PostgreSQL driver. Check the installed environment before deciding which versions to use.
+
+Do not add Docker, Redis, Celery, React, a JavaScript frontend framework, or other unnecessary technologies.
+
+A simple Django management command or script is sufficient for data ingestion, benchmarking, and reporting.
+
+## 4. Data Source and Database Design
+
+Use the official TVMaze API.
+
+Relevant endpoints include:
+
+- `https://api.tvmaze.com/shows`
+- `https://api.tvmaze.com/shows/1/episodes`
+
+Read the API documentation and inspect the actual JSON responses before designing the models.
+
+Create a sensible, simple relational database design. At minimum, store:
+
+### Show
+- TVMaze ID
+- Name
+- Show type
+- Language
+- Status
+- Official website or URL, if available
+- Network relationship, if available
+
+### Network
+- TVMaze network ID, where available
+- Network name
+- Other basic fields only if useful
+
+### Episode
+- TVMaze episode ID
+- Episode name
+- Season
+- Episode number
+- Air date, if available
+- Relationship to its show
+
+Use appropriate Django field types and relationships.
+
+Important:
+- A show can have many episodes.
+- A network can have many shows.
+- A show's network may be missing from the API.
+- Some shows may have no network.
+- Some fields may be null or missing in API responses.
+
+Handle missing data correctly. Do not assume every show has a network or that every API response contains every field.
+
+Use stable external TVMaze IDs to avoid creating duplicate records when the import is run multiple times.
+
+Use a manageable dataset suitable for demonstrating performance. Do not download thousands of records unnecessarily. Explain the dataset size and its limitations.
+
+Fetch API data only during the ingestion step. Once data is stored locally, all optimisation experiments must run against PostgreSQL rather than repeatedly querying the external API.
+
+## 5. Database Setup
+
+Configure Django to use PostgreSQL.
+
+Create a `.env.example` file documenting the required database settings. Load real settings from environment variables.
+
+Never hardcode real passwords or credentials into source code.
+
+Provide beginner-friendly setup instructions for:
+
+- Creating a PostgreSQL database.
+- Creating a database user if necessary.
+- Setting environment variables.
+- Installing Python dependencies.
+- Running Django migrations.
+- Importing TVMaze data.
+- Running the optimisation experiments.
+
+Keep the setup straightforward. Do not make the project dependent on a complex deployment environment.
+
+If PostgreSQL is not installed or accessible, explain the exact setup issue and provide the necessary instructions. Do not silently replace PostgreSQL with SQLite because PostgreSQL is a requirement of this project.
+
+## 6. Demonstrate the N+1 Query Problem
+
+Create a clear experiment that retrieves shows and accesses their related network information.
+
+### Experiment A: Before optimisation
+
+Use a simple query that retrieves all relevant shows and then accesses each show's network separately.
+
+Demonstrate the pattern:
+
+- One query retrieves the shows.
+- Additional queries retrieve the related networks as they are accessed.
+
+Count the actual database queries. Do not merely calculate or assume the query count.
+
+### Experiment B: After optimisation
+
+Use `select_related("network")` for the show-to-network relationship.
+
+Demonstrate how Django can retrieve shows and their networks in a single SQL query using a JOIN.
+
+### Experiment C: Episode relationships
+
+Demonstrate the N+1 problem when retrieving shows and their episodes.
+
+Compare:
+
+- Accessing episodes without prefetching.
+- Using `prefetch_related("episodes")` or the correct reverse relationship name defined by your models.
+
+Explain why the episode experiment generally needs a separate query to fetch the related episodes in bulk.
+
+Important requirements:
+- Use the same dataset for before-and-after comparisons.
+- Make the relationship being accessed explicit.
+- Use Django's actual query capture facilities to count database queries.
+- Ensure the queryset is evaluated inside the measurement context.
+- Avoid counting API requests, migrations, or unrelated setup queries as part of the experiment.
+- Include the SQL query count as well as elapsed time.
+- Explain why query counts and execution time are different measurements.
+- Do not claim that every optimisation always results in exactly one query. Query counts depend on the relationship and query structure.
+
+## 7. Database Indexing Experiment
+
+Demonstrate how an index can affect a realistic filtering query.
+
+Choose an appropriate field, such as show type, status, or another field justified by the data and query workload.
+
+Create two comparable experiments:
+
+### Before indexing
+- Ensure the relevant index is absent.
+- Run a meaningful filtering query.
+- Record elapsed time and the PostgreSQL execution plan.
+
+### After indexing
+- Create the index through a Django model field option or Django migration.
+- Run the same query against the same data.
+- Record elapsed time and the execution plan again.
+
+Use Django migrations to manage schema changes.
+
+Explain:
+- What a database index is.
+- Why it can make filtering faster.
+- How PostgreSQL chooses whether to use an index.
+- Why an index may not improve a query on a small dataset.
+- Why low-selectivity fields may not benefit much.
+- The storage cost of indexes.
+- The additional work indexes create for inserts, updates, and deletes.
+
+Do not invent performance improvements.
+
+If the dataset is too small for PostgreSQL to choose an index scan, explain this clearly. Do not manipulate the experiment or fabricate timings just to show a speed improvement. If necessary, increase the dataset size moderately or explain the limitation.
+
+For PostgreSQL query plans, distinguish between planning time and execution time. `EXPLAIN ANALYZE` executes the query, so use it carefully and do not mistake its output for the entire application's response time.
+
+## 8. Benchmarking Requirements
+
+Create a simple, reproducible benchmarking process.
+
+For each experiment, record:
+
+- Experiment name
+- Dataset size
+- Number of database queries
+- Total elapsed time
+- Average time per run
+- PostgreSQL execution time when measured separately
+- Relevant notes about the query plan
+
+Run repeated measurements where appropriate. Use the same dataset, filters, output processing, and measurement method for comparable tests.
+
+Account for Django queryset caching. A queryset evaluated once may behave differently on subsequent evaluations. Create fresh querysets for comparable runs.
+
+Account for PostgreSQL and operating-system caching. Explain that repeated timings can improve because data is already cached.
+
+Do not claim that Python's `time.perf_counter()` measures only PostgreSQL execution time. It measures the elapsed time of the code placed between the timer calls, which may include Python processing and database communication.
+
+Store actual benchmark results in a CSV file, for example:
+
+`results/benchmark_results.csv`
+
+Generate simple graphs comparing:
+1. Query counts before and after N+1 optimisation.
+2. Elapsed times before and after N+1 optimisation.
+3. Filter query timings before and after indexing.
+
+Use clear labels and units. Keep the visualisations simple.
+
+If a benchmark fails, report the error and fix it rather than inserting made-up values.
+
+## 9. Explain the Main Concepts
+
+Create beginner-friendly explanations in the README and in the relevant code comments.
+
+Cover these questions:
+
+### N+1 Problem
+- What does N+1 mean?
+- Why does it happen in Django ORM?
+- Why does it become worse as the number of records increases?
+- How does it affect application performance?
+
+### `select_related()` vs `prefetch_related()`
+- How does each method work?
+- What is a SQL JOIN?
+- What is a ForeignKey?
+- What is a reverse ForeignKey relationship?
+- Why is `select_related()` appropriate for a show's network?
+- Why is `prefetch_related()` appropriate for a show's episodes?
+
+### Database Indexes
+- What is an index?
+- How does an index help PostgreSQL find records?
+- What is an index scan?
+- What is a sequential scan?
+- What are the advantages and disadvantages of indexes?
+- Why might PostgreSQL ignore an index?
+- Why is measuring index performance on a tiny dataset misleading?
+
+Use the actual models and queries from this project to explain the concepts. Do not distract me with unrelated examples.
+
+## 10. Keep the Project Structure Simple
+
+Use a straightforward structure similar to:
+
+`project/`
+- `manage.py`
+- `config/`
+  - Django settings and URL configuration
+- `shows/`
+  - `models.py`
+  - `admin.py`
+  - `management/commands/import_tvmaze.py`
+  - `management/commands/benchmark_queries.py`
+  - migrations
+- `results/`
+  - actual benchmark CSV
+  - generated performance graphs
+- `.env.example`
+- `requirements.txt`
+- `.gitignore`
+- `README.md`
+
+You may adjust this structure when Django requires it, but do not create unnecessary files.
+
+Keep data ingestion, benchmarking, and reporting easy to locate.
+
+Do not create a large number of tiny files or build a complicated service layer. Prefer simple management commands that can be executed directly from the terminal.
+
+## 11. README Requirements
+
+Write a complete README containing:
+
+1. Project overview.
+2. Problem statement.
+3. Objectives.
+4. Technologies used.
+5. Simple architecture and data-flow diagram.
+6. Database schema and relationships.
+7. Installation instructions for Windows.
+8. PostgreSQL configuration.
+9. Commands to migrate the database and import TVMaze data.
+10. Commands to run all experiments.
+11. Explanation of the N+1 problem.
+12. Explanation of `select_related()` and `prefetch_related()`.
+13. Explanation of database indexes and their trade-offs.
+14. Actual benchmark results.
+15. Graphs and interpretation of the findings.
+16. Limitations of the experiments.
+17. Conclusion.
+18. References to the official TVMaze and Django documentation.
+
+The README must explain the project in simple language so that I can use it to prepare for a college presentation or viva.
+
+Clearly distinguish actual measured results from expected behaviour and illustrative examples.
+
+## 12. Testing and Correctness
+
+Include a small set of straightforward tests covering:
+
+- Model relationships.
+- Handling missing network information.
+- Importing records without creating duplicates.
+- Query counts for the N+1 and optimised versions.
+- Basic correctness of benchmark results.
+
+Use PostgreSQL for tests where PostgreSQL-specific behaviour matters.
+
+Do not write unnecessarily complicated tests or introduce a large testing framework.
+
+Before declaring the project complete:
+
+- Verify migrations.
+- Verify the API import.
+- Verify the relationships.
+- Run all benchmarks.
+- Confirm that the optimised queries return the same logical results as the original queries.
+- Confirm that benchmark CSV files contain actual measurements.
+- Confirm that the generated graphs use actual measurements.
+- Fix errors found during execution.
+
+Do not claim that a test passed unless you actually ran it and verified the result.
+
+## 13. How You Must Work
+
+Follow this workflow:
+
+1. Inspect the existing project directory and environment before changing anything.
+2. Check the installed Python version, relevant dependencies, PostgreSQL availability, and existing files.
+3. Create a short `plan.md` explaining the implementation steps.
+4. Implement the project in logical batches.
+5. Run commands and tests as you go.
+6. Fix errors before proceeding to dependent steps.
+7. Generate the actual benchmark results and graphs.
+8. Finish the README and verify the complete workflow.
+
+Do not repeatedly stop and ask me to approve every small step. Make reasonable technical decisions independently, provided they satisfy the requirements.
+
+If an essential detail is missing, choose a sensible default and document it. Ask me only when you genuinely cannot proceed without my input, such as when a required PostgreSQL server or credential is unavailable.
+
+Do not overwrite unrelated existing files. Inspect them first and preserve any existing work that is relevant.
+
+Never pretend that an API request, database operation, benchmark, or test succeeded if it was not actually executed successfully.
+
+## 14. Final Deliverables
+
+At the end, provide:
+
+- Complete working source code.
+- Django models and migrations.
+- TVMaze data import command.
+- N+1 query demonstration.
+- Optimised ORM queries.
+- Database indexing experiment.
+- Benchmarking script or management command.
+- Actual CSV benchmark results.
+- Performance graphs.
+- Tests.
+- `.env.example`.
+- `requirements.txt`.
+- Detailed beginner-friendly README.
+- `plan.md`.
+
+Finally, provide a concise summary explaining:
+- What files were created.
+- How to set up PostgreSQL.
+- The exact commands to run the project.
+- How to run the experiments.
+- What the actual benchmark results show.
+- Any remaining limitations or steps that could not be completed.
+
+**Final instruction: Simplicity, correctness, and educational clarity are more important than clever code or unnecessary features. Build the smallest complete project that satisfies all the requirements above. Explain important decisions in beginner-friendly language, and never fabricate results.**# Claude Code Prompt: Django ORM and Database Optimisation
+
+## Project Title
+**Django ORM and Database Optimisation Using the TVMaze API and PostgreSQL**
+
+## 1. Your Role
+
+Act as a beginner-friendly Python developer and teacher. Build this project completely, but keep all code as simple as possible.
+
+I am a Data Science student learning backend development and database optimisation. I need to understand every part of the project, not just obtain working code.
+
+**The most important coding rule is: use the simplest possible code.**
+
+Follow these rules strictly:
+- Use basic Python syntax that a beginner can understand.
+- Prefer straightforward functions and loops over complicated abstractions.
+- Avoid unnecessary classes, inheritance, decorators, design patterns, and advanced Python features.
+- Use simple variable names that clearly explain their purpose.
+- Keep functions short and easy to follow.
+- Do not write one-line code that combines many operations.
+- Avoid unnecessary helper files, dependencies, configuration layers, and boilerplate.
+- Do not introduce complicated architecture just to make the project look professional.
+- Use Django models where Django requires them, but keep the rest of the code procedural and straightforward.
+- Use comments to explain important operations in simple English.
+- Never sacrifice correctness or security for simplicity.
+- Do not use code that is more advanced than necessary for the project's requirements.
+
+Write the code as if you were teaching a student who understands basic Python but is new to Django, PostgreSQL, and database optimisation.
+
+## 2. Project Objective
+
+Build a complete Django application that:
+
+1. Downloads television show and episode data from the TVMaze API.
+2. Stores the data in a PostgreSQL database using the Django ORM.
+3. Demonstrates the N+1 query problem using deliberately inefficient queries.
+4. Fixes the N+1 query problem using `select_related()` and `prefetch_related()`.
+5. Adds database indexes to appropriate fields.
+6. Measures and compares performance before and after optimisation.
+7. Produces clear tables and visualisations showing the results.
+8. Explains the results and the trade-offs of each optimisation.
+
+The project must be executable on a Windows laptop with 16 GB RAM. Keep the setup suitable for a student project.
+
+## 3. Technology Stack
+
+Use the following technologies:
+
+- Python
+- Django
+- PostgreSQL
+- Django ORM
+- TVMaze API: https://www.tvmaze.com/api
+- `requests` for API requests
+- `time.perf_counter()` for elapsed-time measurements
+- Django's database query logging or `CaptureQueriesContext` for counting and inspecting queries
+- PostgreSQL `EXPLAIN ANALYZE` for examining query execution plans where appropriate
+- Matplotlib for simple performance graphs, if useful
+
+Use a stable Django version compatible with the installed Python version and PostgreSQL driver. Check the installed environment before deciding which versions to use.
+
+Do not add Docker, Redis, Celery, React, a JavaScript frontend framework, or other unnecessary technologies.
+
+A simple Django management command or script is sufficient for data ingestion, benchmarking, and reporting.
+
+## 4. Data Source and Database Design
+
+Use the official TVMaze API.
+
+Relevant endpoints include:
+
+- `https://api.tvmaze.com/shows`
+- `https://api.tvmaze.com/shows/1/episodes`
+
+Read the API documentation and inspect the actual JSON responses before designing the models.
+
+Create a sensible, simple relational database design. At minimum, store:
+
+### Show
+- TVMaze ID
+- Name
+- Show type
+- Language
+- Status
+- Official website or URL, if available
+- Network relationship, if available
+
+### Network
+- TVMaze network ID, where available
+- Network name
+- Other basic fields only if useful
+
+### Episode
+- TVMaze episode ID
+- Episode name
+- Season
+- Episode number
+- Air date, if available
+- Relationship to its show
+
+Use appropriate Django field types and relationships.
+
+Important:
+- A show can have many episodes.
+- A network can have many shows.
+- A show's network may be missing from the API.
+- Some shows may have no network.
+- Some fields may be null or missing in API responses.
+
+Handle missing data correctly. Do not assume every show has a network or that every API response contains every field.
+
+Use stable external TVMaze IDs to avoid creating duplicate records when the import is run multiple times.
+
+Use a manageable dataset suitable for demonstrating performance. Do not download thousands of records unnecessarily. Explain the dataset size and its limitations.
+
+Fetch API data only during the ingestion step. Once data is stored locally, all optimisation experiments must run against PostgreSQL rather than repeatedly querying the external API.
+
+## 5. Database Setup
+
+Configure Django to use PostgreSQL.
+
+Create a `.env.example` file documenting the required database settings. Load real settings from environment variables.
+
+Never hardcode real passwords or credentials into source code.
+
+Provide beginner-friendly setup instructions for:
+
+- Creating a PostgreSQL database.
+- Creating a database user if necessary.
+- Setting environment variables.
+- Installing Python dependencies.
+- Running Django migrations.
+- Importing TVMaze data.
+- Running the optimisation experiments.
+
+Keep the setup straightforward. Do not make the project dependent on a complex deployment environment.
+
+If PostgreSQL is not installed or accessible, explain the exact setup issue and provide the necessary instructions. Do not silently replace PostgreSQL with SQLite because PostgreSQL is a requirement of this project.
+
+## 6. Demonstrate the N+1 Query Problem
+
+Create a clear experiment that retrieves shows and accesses their related network information.
+
+### Experiment A: Before optimisation
+
+Use a simple query that retrieves all relevant shows and then accesses each show's network separately.
+
+Demonstrate the pattern:
+
+- One query retrieves the shows.
+- Additional queries retrieve the related networks as they are accessed.
+
+Count the actual database queries. Do not merely calculate or assume the query count.
+
+### Experiment B: After optimisation
+
+Use `select_related("network")` for the show-to-network relationship.
+
+Demonstrate how Django can retrieve shows and their networks in a single SQL query using a JOIN.
+
+### Experiment C: Episode relationships
+
+Demonstrate the N+1 problem when retrieving shows and their episodes.
+
+Compare:
+
+- Accessing episodes without prefetching.
+- Using `prefetch_related("episodes")` or the correct reverse relationship name defined by your models.
+
+Explain why the episode experiment generally needs a separate query to fetch the related episodes in bulk.
+
+Important requirements:
+- Use the same dataset for before-and-after comparisons.
+- Make the relationship being accessed explicit.
+- Use Django's actual query capture facilities to count database queries.
+- Ensure the queryset is evaluated inside the measurement context.
+- Avoid counting API requests, migrations, or unrelated setup queries as part of the experiment.
+- Include the SQL query count as well as elapsed time.
+- Explain why query counts and execution time are different measurements.
+- Do not claim that every optimisation always results in exactly one query. Query counts depend on the relationship and query structure.
+
+## 7. Database Indexing Experiment
+
+Demonstrate how an index can affect a realistic filtering query.
+
+Choose an appropriate field, such as show type, status, or another field justified by the data and query workload.
+
+Create two comparable experiments:
+
+### Before indexing
+- Ensure the relevant index is absent.
+- Run a meaningful filtering query.
+- Record elapsed time and the PostgreSQL execution plan.
+
+### After indexing
+- Create the index through a Django model field option or Django migration.
+- Run the same query against the same data.
+- Record elapsed time and the execution plan again.
+
+Use Django migrations to manage schema changes.
+
+Explain:
+- What a database index is.
+- Why it can make filtering faster.
+- How PostgreSQL chooses whether to use an index.
+- Why an index may not improve a query on a small dataset.
+- Why low-selectivity fields may not benefit much.
+- The storage cost of indexes.
+- The additional work indexes create for inserts, updates, and deletes.
+
+Do not invent performance improvements.
+
+If the dataset is too small for PostgreSQL to choose an index scan, explain this clearly. Do not manipulate the experiment or fabricate timings just to show a speed improvement. If necessary, increase the dataset size moderately or explain the limitation.
+
+For PostgreSQL query plans, distinguish between planning time and execution time. `EXPLAIN ANALYZE` executes the query, so use it carefully and do not mistake its output for the entire application's response time.
+
+## 8. Benchmarking Requirements
+
+Create a simple, reproducible benchmarking process.
+
+For each experiment, record:
+
+- Experiment name
+- Dataset size
+- Number of database queries
+- Total elapsed time
+- Average time per run
+- PostgreSQL execution time when measured separately
+- Relevant notes about the query plan
+
+Run repeated measurements where appropriate. Use the same dataset, filters, output processing, and measurement method for comparable tests.
+
+Account for Django queryset caching. A queryset evaluated once may behave differently on subsequent evaluations. Create fresh querysets for comparable runs.
+
+Account for PostgreSQL and operating-system caching. Explain that repeated timings can improve because data is already cached.
+
+Do not claim that Python's `time.perf_counter()` measures only PostgreSQL execution time. It measures the elapsed time of the code placed between the timer calls, which may include Python processing and database communication.
+
+Store actual benchmark results in a CSV file, for example:
+
+`results/benchmark_results.csv`
+
+Generate simple graphs comparing:
+1. Query counts before and after N+1 optimisation.
+2. Elapsed times before and after N+1 optimisation.
+3. Filter query timings before and after indexing.
+
+Use clear labels and units. Keep the visualisations simple.
+
+If a benchmark fails, report the error and fix it rather than inserting made-up values.
+
+## 9. Explain the Main Concepts
+
+Create beginner-friendly explanations in the README and in the relevant code comments.
+
+Cover these questions:
+
+### N+1 Problem
+- What does N+1 mean?
+- Why does it happen in Django ORM?
+- Why does it become worse as the number of records increases?
+- How does it affect application performance?
+
+### `select_related()` vs `prefetch_related()`
+- How does each method work?
+- What is a SQL JOIN?
+- What is a ForeignKey?
+- What is a reverse ForeignKey relationship?
+- Why is `select_related()` appropriate for a show's network?
+- Why is `prefetch_related()` appropriate for a show's episodes?
+
+### Database Indexes
+- What is an index?
+- How does an index help PostgreSQL find records?
+- What is an index scan?
+- What is a sequential scan?
+- What are the advantages and disadvantages of indexes?
+- Why might PostgreSQL ignore an index?
+- Why is measuring index performance on a tiny dataset misleading?
+
+Use the actual models and queries from this project to explain the concepts. Do not distract me with unrelated examples.
+
+## 10. Keep the Project Structure Simple
+
+Use a straightforward structure similar to:
+
+`project/`
+- `manage.py`
+- `config/`
+  - Django settings and URL configuration
+- `shows/`
+  - `models.py`
+  - `admin.py`
+  - `management/commands/import_tvmaze.py`
+  - `management/commands/benchmark_queries.py`
+  - migrations
+- `results/`
+  - actual benchmark CSV
+  - generated performance graphs
+- `.env.example`
+- `requirements.txt`
+- `.gitignore`
+- `README.md`
+
+You may adjust this structure when Django requires it, but do not create unnecessary files.
+
+Keep data ingestion, benchmarking, and reporting easy to locate.
+
+Do not create a large number of tiny files or build a complicated service layer. Prefer simple management commands that can be executed directly from the terminal.
+
+## 11. README Requirements
+
+Write a complete README containing:
+
+1. Project overview.
+2. Problem statement.
+3. Objectives.
+4. Technologies used.
+5. Simple architecture and data-flow diagram.
+6. Database schema and relationships.
+7. Installation instructions for Windows.
+8. PostgreSQL configuration.
+9. Commands to migrate the database and import TVMaze data.
+10. Commands to run all experiments.
+11. Explanation of the N+1 problem.
+12. Explanation of `select_related()` and `prefetch_related()`.
+13. Explanation of database indexes and their trade-offs.
+14. Actual benchmark results.
+15. Graphs and interpretation of the findings.
+16. Limitations of the experiments.
+17. Conclusion.
+18. References to the official TVMaze and Django documentation.
+
+The README must explain the project in simple language so that I can use it to prepare for a college presentation or viva.
+
+Clearly distinguish actual measured results from expected behaviour and illustrative examples.
+
+## 12. Testing and Correctness
+
+Include a small set of straightforward tests covering:
+
+- Model relationships.
+- Handling missing network information.
+- Importing records without creating duplicates.
+- Query counts for the N+1 and optimised versions.
+- Basic correctness of benchmark results.
+
+Use PostgreSQL for tests where PostgreSQL-specific behaviour matters.
+
+Do not write unnecessarily complicated tests or introduce a large testing framework.
+
+Before declaring the project complete:
+
+- Verify migrations.
+- Verify the API import.
+- Verify the relationships.
+- Run all benchmarks.
+- Confirm that the optimised queries return the same logical results as the original queries.
+- Confirm that benchmark CSV files contain actual measurements.
+- Confirm that the generated graphs use actual measurements.
+- Fix errors found during execution.
+
+Do not claim that a test passed unless you actually ran it and verified the result.
+
+## 13. How You Must Work
+
+Follow this workflow:
+
+1. Inspect the existing project directory and environment before changing anything.
+2. Check the installed Python version, relevant dependencies, PostgreSQL availability, and existing files.
+3. Create a short `plan.md` explaining the implementation steps.
+4. Implement the project in logical batches.
+5. Run commands and tests as you go.
+6. Fix errors before proceeding to dependent steps.
+7. Generate the actual benchmark results and graphs.
+8. Finish the README and verify the complete workflow.
+
+Do not repeatedly stop and ask me to approve every small step. Make reasonable technical decisions independently, provided they satisfy the requirements.
+
+If an essential detail is missing, choose a sensible default and document it. Ask me only when you genuinely cannot proceed without my input, such as when a required PostgreSQL server or credential is unavailable.
+
+Do not overwrite unrelated existing files. Inspect them first and preserve any existing work that is relevant.
+
+Never pretend that an API request, database operation, benchmark, or test succeeded if it was not actually executed successfully.
+
+## 14. Final Deliverables
+
+At the end, provide:
+
+- Complete working source code.
+- Django models and migrations.
+- TVMaze data import command.
+- N+1 query demonstration.
+- Optimised ORM queries.
+- Database indexing experiment.
+- Benchmarking script or management command.
+- Actual CSV benchmark results.
+- Performance graphs.
+- Tests.
+- `.env.example`.
+- `requirements.txt`.
+- Detailed beginner-friendly README.
+- `plan.md`.
+
+Finally, provide a concise summary explaining:
+- What files were created.
+- How to set up PostgreSQL.
+- The exact commands to run the project.
+- How to run the experiments.
+- What the actual benchmark results show.
+- Any remaining limitations or steps that could not be completed.
+
+**Final instruction: Simplicity, correctness, and educational clarity are more important than clever code or unnecessary features. Build the smallest complete project that satisfies all the requirements above. Explain important decisions in beginner-friendly language, and never fabricate results.**

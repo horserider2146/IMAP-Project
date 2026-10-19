@@ -1,0 +1,6 @@
+Downloading show page 0 ...
+  shows imported so far: 240
+Done.
+Shows in database:    485
+Networks in database: 81
+Episodes in database: 61658

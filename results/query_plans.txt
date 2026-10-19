@@ -1,0 +1,35 @@
+E1 - airdate range, NO index
+Seq Scan on shows_episode  (cost=0.00..1582.87 rows=487 width=55) (actual time=0.015..8.456 rows=501.00 loops=1)
+  Filter: ((airdate >= '2015-03-01'::date) AND (airdate < '2015-04-01'::date))
+  Rows Removed by Filter: 61157
+  Buffers: shared hit=658
+Planning Time: 0.076 ms
+Execution Time: 8.504 ms
+
+E2 - airdate range, WITH index
+Bitmap Heap Scan on shows_episode  (cost=9.61..666.89 rows=519 width=55) (actual time=0.039..0.162 rows=501.00 loops=1)
+  Recheck Cond: ((airdate >= '2015-03-01'::date) AND (airdate < '2015-04-01'::date))
+  Heap Blocks: exact=131
+  Buffers: shared hit=133
+  ->  Bitmap Index Scan on episode_airdate_idx  (cost=0.00..9.48 rows=519 width=0) (actual time=0.022..0.022 rows=501.00 loops=1)
+        Index Cond: ((airdate >= '2015-03-01'::date) AND (airdate < '2015-04-01'::date))
+        Index Searches: 1
+        Buffers: shared hit=2
+Planning Time: 0.090 ms
+Execution Time: 0.223 ms
+
+F1 - status='Ended', NO index
+Seq Scan on shows_show  (cost=0.00..13.06 rows=442 width=81) (actual time=0.016..0.064 rows=442.00 loops=1)
+  Filter: ((status)::text = 'Ended'::text)
+  Rows Removed by Filter: 43
+  Buffers: shared hit=7
+Planning Time: 0.064 ms
+Execution Time: 0.082 ms
+
+F2 - status='Ended', WITH index
+Seq Scan on shows_show  (cost=0.00..13.06 rows=442 width=81) (actual time=0.009..0.048 rows=442.00 loops=1)
+  Filter: ((status)::text = 'Ended'::text)
+  Rows Removed by Filter: 43
+  Buffers: shared hit=7
+Planning Time: 0.077 ms
+Execution Time: 0.066 ms

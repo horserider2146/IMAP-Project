@@ -1,0 +1,9 @@
+experiment,dataset_size,queries,runs,total_seconds,avg_seconds,pg_planning_ms,pg_execution_ms,notes
+A: shows + network (N+1),485,457,10,1.79678,0.17968,,,"reads show.network for every show, no select_related | query counts in each run: [457]"
+B: select_related('network'),485,1,10,0.08408,0.00841,,,one query with a JOIN | query counts in each run: [1]
+C: shows + episodes (N+1),485,486,10,7.27777,0.72778,,,"reads show.episodes for every show, no prefetch | query counts in each run: [486]"
+D: prefetch_related('episodes'),485,2,10,5.25439,0.52544,,,one query for shows + one query for all their episodes | query counts in each run: [2]
+E1: airdate range - no index,61658,1,10,0.11649,0.01165,0.076,8.504,plan: Seq Scan (sequential scan) | rows returned: 501
+E2: airdate range - with index,61658,1,10,0.04403,0.0044,0.090,0.223,plan: Bitmap Index Scan | rows returned: 501 | index size: 704 kB
+F1: status='Ended' - no index,485,1,10,0.02542,0.00254,0.064,0.082,plan: Seq Scan (sequential scan) | rows returned: 442
+F2: status='Ended' - with index,485,1,10,0.16945,0.01695,0.077,0.066,plan: Seq Scan (sequential scan) | rows returned: 442 | index size: 16 kB
