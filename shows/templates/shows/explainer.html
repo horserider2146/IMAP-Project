@@ -1,0 +1,62 @@
+{% extends "shows/base.html" %}
+{% load static %}
+
+{% block content %}
+<main>
+  <div class="intro">
+    <h1>Watch the queries</h1>
+    <p>Step through the loop from <span class="mono">benchmark_queries.py</span> and see each SQL query Django sends. Final counts and times are the measured values.</p>
+  </div>
+
+  <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+    <div class="segmented">
+      <a class="{% if rel == 'network' %}active{% endif %}" href="?rel=network&amp;mode={{ mode }}">Show → network</a>
+      <a class="{% if rel == 'episodes' %}active{% endif %}" href="?rel=episodes&amp;mode={{ mode }}">Show → episodes</a>
+    </div>
+    <div class="segmented">
+      <a class="{% if mode == 'naive' %}active{% endif %}" href="?rel={{ rel }}&amp;mode=naive">Naive (N+1)</a>
+      <a class="{% if mode == 'opt' %}active{% endif %}" href="?rel={{ rel }}&amp;mode=opt">{% if rel == 'network' %}select_related{% else %}prefetch_related{% endif %}</a>
+    </div>
+  </div>
+
+  <div class="explainer-grid">
+    <div class="explainer-left">
+      <div class="code-panel">
+        <div class="code-panel-head"><span id="fn-name"></span><span id="exp-id"></span></div>
+        <div class="code-lines" id="code-lines"></div>
+        <div class="line-note" id="line-note"></div>
+      </div>
+
+      <div class="counter-panel">
+        <div class="counter-head">
+          <div>
+            <div class="counter-label">Queries sent</div>
+            <div class="counter-value" id="counter-value"><span id="count">0</span><span class="counter-total"> / <span id="total">0</span></span></div>
+          </div>
+          <div class="counter-buttons">
+            <button class="btn-plain" id="step-btn">Step</button>
+            <button class="btn-accent" id="play-btn">Play</button>
+            <button class="btn-muted" id="reset-btn">Reset</button>
+          </div>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%;background:var(--ink)"></div></div>
+        <div class="done-grid" id="done-grid" style="display:none">
+          <div><div class="counter-label">Measured avg per run</div><div class="per-query-value" id="measured-ms"></div></div>
+          <div><div class="counter-label">Other version</div><div class="per-query-value muted" id="other-summary"></div></div>
+        </div>
+        <div class="line-note" id="footnote"></div>
+      </div>
+    </div>
+
+    <div class="sql-log">
+      <div class="sql-log-head"><span>SQL log · newest first</span><span class="mono">CaptureQueriesContext</span></div>
+      <div id="sql-log-rows"></div>
+      <div class="sql-log-empty" id="sql-log-empty">No queries yet. Press Step or Play.</div>
+      <div class="sql-log-hidden" id="sql-log-hidden" style="display:none"></div>
+    </div>
+  </div>
+</main>
+
+{{ explainer_data|json_script:"explainer-data" }}
+<script src="{% static 'shows/explainer.js' %}"></script>
+{% endblock %}

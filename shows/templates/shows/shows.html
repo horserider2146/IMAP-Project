@@ -1,0 +1,113 @@
+{% extends "shows/base.html" %}
+
+{% block content %}
+<main>
+  <div class="page-head">
+    <div class="intro">
+      <h1>Shows</h1>
+      <p>{{ show_count }} shows from TVMaze show pages 0–1.</p>
+    </div>
+    <div class="query-count-box">
+      <div>
+        <span class="eyebrow">SQL queries to render this list</span><br>
+        <span class="big-stat {% if query_count_is_good %}good{% else %}bad{% endif %}" style="font-size:24px">{{ query_count }}</span>
+      </div>
+      <div class="segmented">
+        <a class="{% if load_mode == 'select_related' %}active{% endif %}"
+           href="?{{ load_query_string }}{% if load_query_string %}&{% endif %}load=select_related">select_related</a>
+        <a class="{% if load_mode == 'naive' %}active{% endif %}"
+           href="?{{ load_query_string }}{% if load_query_string %}&{% endif %}load=naive">naive (N+1)</a>
+      </div>
+    </div>
+  </div>
+
+  <form method="get" class="filter-row">
+    <input type="hidden" name="status" value="{{ status }}">
+    <input type="hidden" name="load" value="{{ load_mode }}">
+    <input type="text" name="q" value="{{ search }}" placeholder="Search shows">
+    <div class="status-buttons">
+      {% for opt in status_options %}
+        <a class="{% if opt.active %}active{% endif %}"
+           href="?{{ opt.query_string }}{% if opt.query_string %}&{% endif %}status={{ opt.value }}">{{ opt.label }}</a>
+      {% endfor %}
+    </div>
+    <select name="network" onchange="this.form.submit()">
+      <option value="">All networks</option>
+      {% for network in networks %}
+        <option value="{{ network.id }}" {% if network_id == network.id|stringformat:"s" %}selected{% endif %}>{{ network.name }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="outline-button">Search</button>
+    <span class="mono muted" style="margin-left:auto">{{ total_matching }} of {{ show_count }}</span>
+  </form>
+
+  <div class="shows-layout">
+    <div class="shows-table-card">
+      <div class="shows-row-head">
+        <span>ID</span><span>Name</span><span>Network</span><span>Type</span><span>Status</span>
+      </div>
+      {% for row in rows %}
+        <a class="shows-row {% if row.selected %}selected{% endif %}"
+           href="?{{ query_string_no_page }}{% if query_string_no_page %}&{% endif %}show={{ row.id }}">
+          <span class="id">{{ row.id }}</span>
+          <span class="name">{{ row.name }}</span>
+          <span class="network">{{ row.network_name }} <span class="country">{{ row.country }}</span></span>
+          <span class="type">{{ row.type }}</span>
+          <span class="status {% if row.status == 'Running' %}good{% else %}muted{% endif %}">{{ row.status }}</span>
+        </a>
+      {% empty %}
+        <div class="empty-state">No shows match these filters.</div>
+      {% endfor %}
+
+      {% if page.has_other_pages %}
+      <div class="shows-row-head" style="justify-content:center;gap:16px;display:flex">
+        {% if page.has_previous %}
+          <a href="?{{ query_string_no_page }}{% if query_string_no_page %}&{% endif %}page={{ page.previous_page_number }}">← Previous</a>
+        {% endif %}
+        <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+        {% if page.has_next %}
+          <a href="?{{ query_string_no_page }}{% if query_string_no_page %}&{% endif %}page={{ page.next_page_number }}">Next →</a>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+
+    <aside class="side-panel">
+      {% if selected_show %}
+        <div>
+          <div class="eyebrow">tvmaze_id {{ selected_show.tvmaze_id }}</div>
+          <h2>{{ selected_show.name }}</h2>
+        </div>
+        <div class="field-grid">
+          <span class="panel-label">show_type</span><span>{{ selected_show.show_type|default:"–" }}</span>
+          <span class="panel-label">language</span><span>{{ selected_show.language|default:"–" }}</span>
+          <span class="panel-label">status</span><span>{{ selected_show.status|default:"–" }}</span>
+          <span class="panel-label">network</span>
+          <span>{% if selected_show.network %}{{ selected_show.network.name }} · {{ selected_show.network.country }}{% else %}–{% endif %}</span>
+        </div>
+        <div>
+          <div class="panel-label">ORM</div>
+          <pre class="orm-block">Show.objects.select_related("network").get(tvmaze_id={{ selected_show.tvmaze_id }})
+show.episodes.order_by("season", "number")</pre>
+        </div>
+        <div>
+          <div class="panel-label">Episodes ({{ episodes|length }})</div>
+          <div class="episode-list">
+            {% for episode in episodes %}
+              <div class="episode-row">
+                <span class="ep-code">S{{ episode.season }}E{{ episode.number|default:"–" }}</span>
+                <span>{{ episode.name }}</span>
+                <span class="ep-date">{{ episode.airdate|date:"Y-m-d"|default:"–" }}</span>
+              </div>
+            {% empty %}
+              <span class="muted">No episodes stored for this show.</span>
+            {% endfor %}
+          </div>
+        </div>
+      {% else %}
+        <div class="empty-state">Select a show to see its fields.</div>
+      {% endif %}
+    </aside>
+  </div>
+</main>
+{% endblock %}

@@ -1,0 +1,177 @@
+{% extends "shows/base.html" %}
+{% load static %}
+
+{% block content %}
+<main>
+  <div class="intro">
+    <h1>Django ORM and database optimisation</h1>
+    <p>Measured results from <span class="mono">benchmark_queries</span>. Each experiment ran 10 times after one unmeasured warm-up run, on a Windows laptop with PostgreSQL 18 on localhost.</p>
+  </div>
+
+  <section class="section">
+    <div class="section-heading">
+      <h2>The N+1 query problem</h2>
+      <span class="subtitle">485 shows · lazy loading vs <span class="mono">select_related</span> / <span class="mono">prefetch_related</span></span>
+    </div>
+    <div class="card-grid">
+
+      {% with card=network_card %}
+      <article class="card">
+        <div class="card-head">
+          <div>
+            <div class="eyebrow">Experiments {{ card.slow_code }} → {{ card.fast_code }} · ForeignKey</div>
+            <h3>Shows → network</h3>
+          </div>
+          <a class="outline-button" href="{% url 'shows:explainer' %}?rel=network">Replay in explainer</a>
+        </div>
+        <div class="stat-pair">
+          <div><div class="big-stat">{{ card.queries_slow }} → {{ card.queries_fast }}</div><div class="stat-label">SQL queries</div></div>
+          <div><div class="big-stat good">{{ card.speed_up }}</div><div class="stat-label">faster · {{ card.time_slow }} → {{ card.time_fast }} ms avg</div></div>
+        </div>
+        <div class="bar-group">
+          <div class="bar-label">Queries</div>
+          <div class="bar-row"><span class="bar-code">{{ card.slow_code }}</span><div class="bar-track"><div class="bar-fill bad" style="width:100%"></div></div><span class="bar-value">{{ card.queries_slow }}</span></div>
+          <div class="bar-row"><span class="bar-code">{{ card.fast_code }}</span><div class="bar-track"><div class="bar-fill good" style="width:{{ card.query_bar_fast_percent }}%"></div></div><span class="bar-value">{{ card.queries_fast }}</span></div>
+          <div class="bar-label spaced">Avg time per run</div>
+          <div class="bar-row"><span class="bar-code">{{ card.slow_code }}</span><div class="bar-track"><div class="bar-fill bad" style="width:100%"></div></div><span class="bar-value">{{ card.time_slow }} ms</span></div>
+          <div class="bar-row"><span class="bar-code">{{ card.fast_code }}</span><div class="bar-track"><div class="bar-fill good" style="width:{{ card.time_bar_fast_percent }}%"></div></div><span class="bar-value">{{ card.time_fast }} ms</span></div>
+        </div>
+        <div class="code-chips">
+          <div class="code-chip"><span class="bad">{{ card.slow_code }}</span>&nbsp; {{ card.slow_orm }}</div>
+          <div class="code-chip"><span class="good">{{ card.fast_code }}</span>&nbsp; {{ card.fast_orm }}</div>
+        </div>
+        <div class="per-query-strip">
+          <div><div class="per-query-value">≈ {{ card.per_query_ms }} ms per query</div><div class="per-query-note">in {{ card.slow_code }} · {{ card.time_slow }} ms ÷ {{ card.queries_slow }} queries, the fixed cost of each round-trip</div></div>
+        </div>
+        <p class="footnote">{{ card.footnote }}</p>
+      </article>
+      {% endwith %}
+
+      {% with card=episodes_card %}
+      <article class="card">
+        <div class="card-head">
+          <div>
+            <div class="eyebrow">Experiments {{ card.slow_code }} → {{ card.fast_code }} · reverse ForeignKey</div>
+            <h3>Shows → episodes</h3>
+          </div>
+          <a class="outline-button" href="{% url 'shows:explainer' %}?rel=episodes">Replay in explainer</a>
+        </div>
+        <div class="stat-pair">
+          <div><div class="big-stat">{{ card.queries_slow }} → {{ card.queries_fast }}</div><div class="stat-label">SQL queries</div></div>
+          <div><div class="big-stat good">{{ card.speed_up }}</div><div class="stat-label">faster · {{ card.time_slow }} → {{ card.time_fast }} ms avg</div></div>
+        </div>
+        <div class="bar-group">
+          <div class="bar-label">Queries</div>
+          <div class="bar-row"><span class="bar-code">{{ card.slow_code }}</span><div class="bar-track"><div class="bar-fill bad" style="width:100%"></div></div><span class="bar-value">{{ card.queries_slow }}</span></div>
+          <div class="bar-row"><span class="bar-code">{{ card.fast_code }}</span><div class="bar-track"><div class="bar-fill good" style="width:{{ card.query_bar_fast_percent }}%"></div></div><span class="bar-value">{{ card.queries_fast }}</span></div>
+          <div class="bar-label spaced">Avg time per run</div>
+          <div class="bar-row"><span class="bar-code">{{ card.slow_code }}</span><div class="bar-track"><div class="bar-fill bad" style="width:100%"></div></div><span class="bar-value">{{ card.time_slow }} ms</span></div>
+          <div class="bar-row"><span class="bar-code">{{ card.fast_code }}</span><div class="bar-track"><div class="bar-fill good" style="width:{{ card.time_bar_fast_percent }}%"></div></div><span class="bar-value">{{ card.time_fast }} ms</span></div>
+        </div>
+        <div class="code-chips">
+          <div class="code-chip"><span class="bad">{{ card.slow_code }}</span>&nbsp; {{ card.slow_orm }}</div>
+          <div class="code-chip"><span class="good">{{ card.fast_code }}</span>&nbsp; {{ card.fast_orm }}</div>
+        </div>
+        <div class="per-query-strip">
+          <div><div class="per-query-value">≈ {{ card.per_query_ms }} ms per query</div><div class="per-query-note">in {{ card.slow_code }} · {{ card.time_slow }} ms ÷ {{ card.queries_slow }} queries</div></div>
+        </div>
+        <p class="footnote">{{ card.footnote }}</p>
+      </article>
+      {% endwith %}
+
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-heading">
+      <h2>Indexing</h2>
+      <span class="subtitle">before and after migration <span class="mono">0002</span> · <span class="mono">EXPLAIN ANALYZE</span></span>
+    </div>
+    <div class="card-grid">
+
+      {% for card in index_cards %}
+      <article class="card">
+        <div>
+          <div class="eyebrow">Experiments {{ card.slow_code }} → {{ card.fast_code }} · {{ card.index_name }}</div>
+          <h3>{{ card.title }}</h3>
+          <div class="stat-label-sm">{{ card.rows_matched }} of {{ card.dataset_size }} rows match · {% if card.index_used %}selective filter{% else %}low-selectivity filter{% endif %}</div>
+        </div>
+        <div class="plan-chips">
+          <span class="plan-chip">{{ card.scan_type_slow }}</span>
+          <span class="muted">→</span>
+          {% if card.index_used %}
+            <span class="plan-chip good">{{ card.scan_type_fast }}</span>
+          {% else %}
+            <span class="plan-chip">{{ card.scan_type_fast }}</span>
+            <span class="bad plan-note">index not used</span>
+          {% endif %}
+        </div>
+        <div class="stat-trio">
+          {% if card.index_used %}
+            <div><div class="mid-stat good">{{ card.pg_exec_speed_up }}</div><div class="stat-label-sm">PostgreSQL execution</div></div>
+            <div><div class="mid-stat">{{ card.python_speed_up }}</div><div class="stat-label-sm">Python avg time</div></div>
+            <div><div class="mid-stat">{{ card.index_size }}</div><div class="stat-label-sm">index size</div></div>
+          {% else %}
+            <div><div class="mid-stat">{{ card.percent_matched }}%</div><div class="stat-label-sm">of rows match</div></div>
+            <div><div class="mid-stat">{{ card.buffers_fast }}</div><div class="stat-label-sm">buffers read, both runs</div></div>
+            <div><div class="mid-stat">{{ card.index_size }}</div><div class="stat-label-sm">index size</div></div>
+          {% endif %}
+        </div>
+        <div class="metric-grid">
+          <div class="metric-cell"><div class="label">Buffers read</div><div class="value">{{ card.buffers_slow }} → <span class="{% if card.index_used %}good{% else %}mono{% endif %}">{{ card.buffers_fast }}</span></div><div class="unit">pages</div></div>
+          <div class="metric-cell"><div class="label">Rows removed by filter</div><div class="value">{{ card.rows_removed_slow }} → <span class="{% if card.index_used %}good{% else %}mono{% endif %}">{{ card.rows_removed_fast }}</span></div><div class="unit">rows read then discarded</div></div>
+          <div class="metric-cell"><div class="label">Planner cost estimate</div><div class="value">{{ card.cost_slow }} → <span class="{% if card.index_used %}good{% else %}mono{% endif %}">{{ card.cost_fast }}</span></div><div class="unit">{% if card.index_used %}arbitrary cost units{% else %}same plan both runs{% endif %}</div></div>
+          <div class="metric-cell"><div class="label">Planning time</div><div class="value">{{ card.planning_slow }} → {{ card.planning_fast }}</div><div class="unit">ms · execution {{ card.exec_slow }} → {{ card.exec_fast }} ms</div></div>
+        </div>
+        <div class="bar-group">
+          <div class="bar-label">PostgreSQL execution time</div>
+          <div class="bar-row"><span class="bar-code">{{ card.slow_code }}</span><div class="bar-track"><div class="bar-fill {% if card.index_used %}bad{% else %}muted{% endif %}" style="width:100%"></div></div><span class="bar-value">{{ card.exec_slow }} ms</span></div>
+          <div class="bar-row"><span class="bar-code">{{ card.fast_code }}</span><div class="bar-track"><div class="bar-fill {% if card.index_used %}good{% else %}muted{% endif %}" style="width:{{ card.exec_bar_fast_percent }}%"></div></div><span class="bar-value">{{ card.exec_fast }} ms</span></div>
+          <div class="bar-label spaced">Python avg time per run</div>
+          <div class="bar-row"><span class="bar-code">{{ card.slow_code }}</span><div class="bar-track"><div class="bar-fill {% if card.index_used %}bad{% else %}muted{% endif %}" style="width:100%"></div></div><span class="bar-value">{{ card.python_time_slow }} ms</span></div>
+          <div class="bar-row"><span class="bar-code">{{ card.fast_code }}</span><div class="bar-track"><div class="bar-fill {% if card.index_used %}good{% else %}muted{% endif %}" style="width:{{ card.python_bar_fast_percent }}%"></div></div><span class="bar-value">{{ card.python_time_fast }} ms</span></div>
+        </div>
+        <details class="plan-toggle">
+          <summary>Show EXPLAIN ANALYZE</summary>
+          <div class="plan-blocks">
+            <div class="eyebrow">{{ card.slow_code }} · no index</div>
+            <pre>{{ card.plan_text_slow }}</pre>
+            <div class="eyebrow">{{ card.fast_code }} · with index</div>
+            <pre>{{ card.plan_text_fast }}</pre>
+          </div>
+        </details>
+      </article>
+      {% endfor %}
+
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-heading">
+      <h2>All measurements</h2>
+      <span class="mono subtitle">results/benchmark_results.csv</span>
+    </div>
+    <div class="table-wrap">
+      <table class="results-table">
+        <thead>
+          <tr><th>Experiment</th><th>Dataset</th><th>Queries</th><th>Avg / run</th><th>PG exec</th><th>Planning</th><th>Est. cost</th><th>Plan</th></tr>
+        </thead>
+        <tbody>
+          {% for row in table_rows %}
+          <tr>
+            <td>{{ row.experiment }}</td>
+            <td>{{ row.dataset_size }}</td>
+            <td class="{% if row.is_n_plus_one %}bad{% elif row.is_optimised %}good{% endif %}">{{ row.queries }}</td>
+            <td>{{ row.avg_ms }} ms</td>
+            <td class="{% if not row.pg_exec_ms or row.pg_exec_ms == '–' %}muted{% endif %}">{{ row.pg_exec_ms }}{% if row.pg_exec_ms != '–' %} ms{% endif %}</td>
+            <td class="{% if not row.planning_ms or row.planning_ms == '–' %}muted{% endif %}">{{ row.planning_ms }}{% if row.planning_ms != '–' %} ms{% endif %}</td>
+            <td class="{% if not row.cost %}muted{% endif %}">{{ row.cost|default:"–" }}</td>
+            <td class="{% if not row.plan_label or row.plan_label == '–' %}muted{% endif %}">{{ row.plan_label }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TVMaze ORM Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'shows/style.css' %}">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="site-header-inner">
+    <div class="brand">
+      <span class="brand-name">TVMaze ORM Lab</span>
+      <span class="brand-sub">Django 5.2 · PostgreSQL 18</span>
+    </div>
+    <nav class="main-nav">
+      <a href="{% url 'shows:results' %}" class="{% if active_tab == 'results' %}active{% endif %}">Results</a>
+      <a href="{% url 'shows:shows' %}" class="{% if active_tab == 'shows' %}active{% endif %}">Shows</a>
+      <a href="{% url 'shows:explainer' %}" class="{% if active_tab == 'explainer' %}active{% endif %}">Explainer</a>
+    </nav>
+    <span class="header-counts">{{ show_count }} shows · {{ network_count }} networks · {{ episode_count }} episodes</span>
+  </div>
+</header>
+
+{% block content %}{% endblock %}
+
+</body>
+</html>
