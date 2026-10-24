@@ -5,7 +5,7 @@
 <main>
   <div class="intro">
     <h1>Watch the queries</h1>
-    <p>Step through the loop from <span class="mono">benchmark_queries.py</span> and see each SQL query Django sends. Final counts and times are the measured values.</p>
+    <p>Step through the loop from <span class="mono">benchmark_queries.py</span> and see each SQL query Django sends. Step and Play really run the loop on the database: every press asks Django to run the next queries, and the SQL, time and results below come straight back from it.</p>
   </div>
 
   <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
@@ -39,20 +39,28 @@
             <button class="btn-muted" id="reset-btn">Reset</button>
           </div>
         </div>
+        <div class="line-note" id="live-status">Nothing has run yet.</div>
         <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%;background:var(--ink)"></div></div>
         <div class="done-grid" id="done-grid" style="display:none">
-          <div><div class="counter-label">Measured avg per run</div><div class="per-query-value" id="measured-ms"></div></div>
+          <div><div class="counter-label">Live total (database time)</div><div class="per-query-value" id="measured-ms"></div></div>
           <div><div class="counter-label">Other version</div><div class="per-query-value muted" id="other-summary"></div></div>
         </div>
         <div class="line-note" id="footnote"></div>
       </div>
     </div>
 
-    <div class="sql-log">
-      <div class="sql-log-head"><span>SQL log · newest first</span><span class="mono">CaptureQueriesContext</span></div>
-      <div id="sql-log-rows"></div>
-      <div class="sql-log-empty" id="sql-log-empty">No queries yet. Press Step or Play.</div>
-      <div class="sql-log-hidden" id="sql-log-hidden" style="display:none"></div>
+    <div>
+      <div class="sql-log">
+        <div class="sql-log-head"><span>SQL log · newest first</span><span class="mono">CaptureQueriesContext</span></div>
+        <div id="sql-log-rows"></div>
+        <div class="sql-log-empty" id="sql-log-empty">No queries yet. Press Step or Play.</div>
+        <div class="sql-log-hidden" id="sql-log-hidden" style="display:none"></div>
+      </div>
+      <div class="sql-log" style="margin-top:16px">
+        <div class="sql-log-head"><span>Loop results · newest first</span><span class="mono" id="result-count">0 rows</span></div>
+        <div id="result-rows"></div>
+        <div class="sql-log-empty" id="result-empty">No results yet.</div>
+      </div>
     </div>
   </div>
 </main>

@@ -1,10 +1,25 @@
+import json
+import re
+import time
+
 from django.core.paginator import Paginator
-from django.db import connection
+from django.db import connection, transaction
+from django.http import JsonResponse
 from django.shortcuts import render
+from django.urls import reverse
 from django.test.utils import CaptureQueriesContext
 
 from . import results_data
+from .management.commands import benchmark_queries
 from .models import Episode, Network, Show
+
+# The four experiment functions the Explainer can run live.
+LIVE_FUNCTIONS = {
+    ("network", "naive"): benchmark_queries.network_slow,
+    ("network", "opt"): benchmark_queries.network_fast,
+    ("episodes", "naive"): benchmark_queries.episodes_slow,
+    ("episodes", "opt"): benchmark_queries.episodes_fast,
+}
 
 SHOWS_PER_PAGE = 50
 STATUS_BUTTONS = ["All", "Ended", "Running"]
@@ -286,13 +301,310 @@ def build_relationship_data(rel, by_code, show_count, with_network_count):
     }
 
 
-def explainer_view(request):
+def read_rel_and_mode(request):
     rel = request.GET.get("rel", "network")
     if rel not in ("network", "episodes"):
         rel = "network"
     mode = request.GET.get("mode", "naive")
     if mode not in ("naive", "opt"):
         mode = "naive"
+    return rel, mode
+
+
+def explainer_run_view(request):
+    """Runs the real experiment function once, right now, against the database
+    and returns the query count, the time, and the SQL Django really sent."""
+    rel, mode = read_rel_and_mode(request)
+    function = LIVE_FUNCTIONS[(rel, mode)]
+
+    # Django's query log holds at most 9000 queries, so clear it first.
+    connection.queries_log.clear()
+    with CaptureQueriesContext(connection) as captured:
+        start = time.perf_counter()
+        function()
+        seconds = time.perf_counter() - start
+
+    # Long column lists are shortened to "..." like the SQL shown in the player.
+    sql_list = [re.sub(r"^SELECT .*? FROM", "SELECT ... FROM", q["sql"], count=1)
+                for q in captured.captured_queries]
+
+    return JsonResponse({
+        "rel": rel,
+        "mode": mode,
+        "total": len(sql_list),
+        "ms": round(seconds * 1000, 3),
+        "sql": sql_list,
+    })
+
+
+# ---------------------------------------------------------------
+# Indexing page: runs EXPLAIN ANALYZE live
+# ---------------------------------------------------------------
+
+INDEX_EXPERIMENTS = {
+    "airdate": {
+        "title": "Episodes aired in March 2015",
+        "filter": "airdate >= 2015-03-01 AND airdate < 2015-04-01",
+        "note": "A date range matches only a small slice of the table, so an index should help a lot.",
+        "model": Episode,
+        "table": "shows_episode",
+        "index": "episode_airdate_idx",
+        "query": benchmark_queries.episodes_in_march_2015,
+    },
+    "status": {
+        "title": "Shows with status = Ended",
+        "filter": "status = 'Ended'",
+        "note": "Most shows share the same few status values, so this filter matches a big part of the table. PostgreSQL may decide the index is not worth using.",
+        "model": Show,
+        "table": "shows_show",
+        "index": "show_status_idx",
+        "query": benchmark_queries.shows_with_status_ended,
+    },
+}
+
+PAGE_SIZE_BYTES = 8192  # PostgreSQL reads and caches the table in 8 kB pages
+
+
+def read_exp_and_index(request):
+    exp = request.GET.get("exp", "airdate")
+    if exp not in INDEX_EXPERIMENTS:
+        exp = "airdate"
+    index = request.GET.get("index", "on")
+    if index not in ("on", "off"):
+        index = "on"
+    return exp, index
+
+
+def get_index_facts(exp):
+    """Real facts about one experiment's table and index, read from PostgreSQL."""
+    experiment = INDEX_EXPERIMENTS[exp]
+    facts = {
+        "title": experiment["title"],
+        "filter": experiment["filter"],
+        "note": experiment["note"],
+        "table": experiment["table"],
+        "indexName": experiment["index"],
+        "tableRows": experiment["model"].objects.count(),
+        "tablePages": 0,
+        "indexExists": False,
+        "indexSize": "",
+    }
+    if connection.vendor != "postgresql":
+        return facts  # the page shows an error message when Run is pressed
+
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_relation_size(%s)", [experiment["table"]])
+        facts["tablePages"] = cursor.fetchone()[0] // PAGE_SIZE_BYTES
+        cursor.execute("SELECT to_regclass(%s) IS NOT NULL", [experiment["index"]])
+        facts["indexExists"] = cursor.fetchone()[0]
+        if facts["indexExists"]:
+            cursor.execute("SELECT pg_size_pretty(pg_relation_size(%s))", [experiment["index"]])
+            facts["indexSize"] = cursor.fetchone()[0]
+    return facts
+
+
+def flatten_plan(node, depth, nodes):
+    """Turn PostgreSQL's nested plan tree into a flat list, one entry per step."""
+    nodes.append({
+        "depth": depth,
+        "node_type": node["Node Type"],
+        "relation": node.get("Relation Name", ""),
+        "index_name": node.get("Index Name", ""),
+        "condition": node.get("Index Cond") or node.get("Recheck Cond") or node.get("Filter") or "",
+        "actual_rows": node.get("Actual Rows", 0),
+        "rows_removed": node.get("Rows Removed by Filter", 0) + node.get("Rows Removed by Index Recheck", 0),
+        "ms": node.get("Actual Total Time", 0),
+        "cost": node.get("Total Cost", 0),
+    })
+    for child in node.get("Plans", []):
+        flatten_plan(child, depth + 1, nodes)
+
+
+def explain_live(queryset, index_on):
+    """Really run EXPLAIN (ANALYZE, BUFFERS) for the queryset. When index_on is
+    False the planner is told, for THIS transaction only, not to use any index,
+    so it has to read the whole table. The index itself is never dropped."""
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            # Parallel workers off so both runs are easy to compare.
+            cursor.execute("SET LOCAL max_parallel_workers_per_gather = 0")
+            if not index_on:
+                cursor.execute("SET LOCAL enable_indexscan = off")
+                cursor.execute("SET LOCAL enable_bitmapscan = off")
+                cursor.execute("SET LOCAL enable_indexonlyscan = off")
+        try:
+            plan_text = queryset.explain(analyze=True, buffers=True, format="json")
+        finally:
+            # SET LOCAL ends with the transaction; RESET also covers nested transactions.
+            with connection.cursor() as cursor:
+                cursor.execute("RESET max_parallel_workers_per_gather")
+                cursor.execute("RESET enable_indexscan")
+                cursor.execute("RESET enable_bitmapscan")
+                cursor.execute("RESET enable_indexonlyscan")
+    return json.loads(plan_text)[0]
+
+
+def indexing_run_view(request):
+    exp, index = read_exp_and_index(request)
+    if connection.vendor != "postgresql":
+        return JsonResponse({"error": "The Indexing page needs PostgreSQL (EXPLAIN ANALYZE is PostgreSQL specific)."},
+                            status=501)
+
+    queryset = INDEX_EXPERIMENTS[exp]["query"]()
+    try:
+        plan = explain_live(queryset, index == "on")
+    except Exception as error:
+        return JsonResponse({"error": "EXPLAIN failed: " + str(error)}, status=500)
+
+    nodes = []
+    flatten_plan(plan["Plan"], 0, nodes)
+
+    # The "heap node" is the step that reads the table itself.
+    heap_node = next((n for n in nodes if n["relation"]), nodes[0])
+    index_node = next((n for n in nodes if n["index_name"]), None)
+    top = plan["Plan"]
+
+    return JsonResponse({
+        "exp": exp,
+        "index": index,
+        "sql": str(queryset.query),
+        "nodes": nodes,
+        "scan_type": heap_node["node_type"],
+        "index_used": any("Index" in n["node_type"] for n in nodes),
+        "index_name": index_node["index_name"] if index_node else "",
+        "rows_returned": top.get("Actual Rows", 0),
+        "rows_examined": heap_node["actual_rows"] + heap_node["rows_removed"],
+        "rows_removed": heap_node["rows_removed"],
+        "buffers": top.get("Shared Hit Blocks", 0) + top.get("Shared Read Blocks", 0),
+        "buffers_hit": top.get("Shared Hit Blocks", 0),
+        "buffers_read": top.get("Shared Read Blocks", 0),
+        "total_cost": top.get("Total Cost", 0),
+        "planning_ms": plan.get("Planning Time", 0),
+        "execution_ms": plan.get("Execution Time", 0),
+    })
+
+
+def indexing_view(request):
+    exp, _ = read_exp_and_index(request)
+    indexing_data = {
+        "exp": exp,
+        "runUrl": reverse("shows:indexing_run"),
+        "experiments": {name: get_index_facts(name) for name in INDEX_EXPERIMENTS},
+    }
+    context = {
+        "active_tab": "indexing",
+        "exp": exp,
+        "experiment_choices": [(name, INDEX_EXPERIMENTS[name]["title"]) for name in INDEX_EXPERIMENTS],
+        "lanes": [
+            {"key": "off", "title": "Without the index",
+             "sub": "Index switched off for this one request, so PostgreSQL has to read the whole table."},
+            {"key": "on", "title": "With the index",
+             "sub": "PostgreSQL is free to choose. It only uses the index if it thinks that is cheaper."},
+        ],
+        "indexing_data": indexing_data,
+    }
+    context.update(header_counts())
+    return render(request, "shows/indexing.html", context)
+
+
+def read_int(request, name, default, smallest, biggest):
+    try:
+        value = int(request.GET.get(name, default))
+    except ValueError:
+        value = default
+    return max(smallest, min(biggest, value))
+
+
+def explainer_step_view(request):
+    """Used by the Play and Step buttons. Runs the NEXT few queries of the real
+    loop (the same code as benchmark_queries.py) and returns their SQL, their
+    time and the result rows the loop produced.
+
+    It keeps no state on the server: `start` is how many queries the browser
+    has already seen, `n` is how many more to run now."""
+    rel, mode = read_rel_and_mode(request)
+    start = read_int(request, "start", 0, 0, 100000)
+    n = read_int(request, "n", 1, 1, 200)
+
+    connection.queries_log.clear()  # Django's log holds at most 9000 queries
+    results = []
+
+    if mode == "opt":
+        # select_related / prefetch_related fetch everything when the queryset
+        # is evaluated, so the very first step already contains every query.
+        if start > 0:
+            return JsonResponse({"rel": rel, "mode": mode, "sql": [], "results": [], "ms": 0, "done": True})
+        if rel == "network":
+            shows_query = Show.objects.select_related("network").order_by("id")
+        else:
+            shows_query = Show.objects.prefetch_related("episodes").order_by("id")
+
+        with CaptureQueriesContext(connection) as captured:
+            timer = time.perf_counter()
+            for show in shows_query:
+                if rel == "network":
+                    results.append((show.name, "No network" if show.network is None else show.network.name))
+                else:
+                    results.append((show.name, len(show.episodes.all())))
+            seconds = time.perf_counter() - timer
+        done = True
+    else:
+        # Naive: query 1 loads the shows, then every show after that sends
+        # its own query (network: only shows that HAVE a network).
+        base_query = Show.objects.order_by("id")
+        shows = None
+        if start > 0:
+            # Not counted: the shows were already loaded by an earlier step,
+            # we only need them again to find where the loop was up to.
+            shows = list(base_query)
+
+        with CaptureQueriesContext(connection) as captured:
+            timer = time.perf_counter()
+            if start == 0:
+                shows = list(base_query)  # query 1
+                budget = n - 1
+            else:
+                budget = n
+
+            # Skip the shows whose queries were already sent in earlier steps.
+            position = 0
+            skipped = 0
+            while skipped < start - 1 and position < len(shows):
+                if rel == "episodes" or shows[position].network_id is not None:
+                    skipped += 1
+                position += 1
+
+            sent = 0
+            done = True
+            for show in shows[position:]:
+                sends_query = rel == "episodes" or show.network_id is not None
+                if sends_query and sent == budget:
+                    done = False
+                    break
+                if sends_query:
+                    sent += 1
+                if rel == "network":
+                    results.append((show.name, "No network" if show.network is None else show.network.name))
+                else:
+                    results.append((show.name, len(show.episodes.all())))
+            seconds = time.perf_counter() - timer
+
+    # Long column lists are shortened to "..." like the rest of the player.
+    sql_list = [re.sub(r"^SELECT .*? FROM", "SELECT ... FROM", q["sql"], count=1)
+                for q in captured.captured_queries]
+
+    return JsonResponse({
+        "rel": rel,
+        "mode": mode,
+        "sql": sql_list,
+        "results": results,
+        "ms": round(seconds * 1000, 3),
+        "done": done,
+    })
+
+
+def explainer_view(request):
+    rel, mode = read_rel_and_mode(request)
 
     _, by_code = results_data.read_benchmark_rows()
     show_count = Show.objects.count()
@@ -303,6 +615,7 @@ def explainer_view(request):
         "showCount": show_count,
         "withNetworkCount": with_network_count,
         "episodeCount": episode_count,
+        "stepUrl": reverse("shows:explainer_step"),
         "rel": rel,
         "mode": mode,
         "relationships": {

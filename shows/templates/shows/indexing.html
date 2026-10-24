@@ -1,0 +1,68 @@
+{% extends "shows/base.html" %}
+{% load static %}
+
+{% block content %}
+<main>
+  <div class="intro">
+    <h1>Watch the index</h1>
+    <p>Press Run and Django asks PostgreSQL to run <span class="mono">EXPLAIN (ANALYZE, BUFFERS)</span> on the real query, twice: once with the index switched off for that request, and once with PostgreSQL free to choose. The numbers are measured live. The coloured squares are a drawing of those numbers.</p>
+  </div>
+
+  <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+    <div class="segmented">
+      {% for name, title in experiment_choices %}
+      <a class="{% if exp == name %}active{% endif %}" href="?exp={{ name }}">{{ title }}</a>
+      {% endfor %}
+    </div>
+    <div class="counter-buttons">
+      <button class="btn-accent" id="run-btn">Run</button>
+      <button class="btn-muted" id="reset-btn">Reset</button>
+    </div>
+  </div>
+
+  <div class="code-panel">
+    <div class="code-panel-head"><span id="facts-title"></span><span id="facts-filter"></span></div>
+    <div class="code-lines"><div class="code-line"><span class="n">SQL</span><span class="text" id="sql-text">Press Run to see the SQL Django sends.</span></div></div>
+    <div class="metric-grid">
+      <div class="metric-cell"><div class="label">Table</div><div class="value" id="fact-table"></div><div class="unit" id="fact-rows"></div></div>
+      <div class="metric-cell"><div class="label">Table size</div><div class="value" id="fact-pages"></div><div class="unit">8 kB pages</div></div>
+      <div class="metric-cell"><div class="label">Index</div><div class="value" id="fact-index"></div><div class="unit" id="fact-index-size"></div></div>
+    </div>
+    <div class="line-note" id="fact-note"></div>
+    <div class="line-note" id="status">Nothing has run yet.</div>
+  </div>
+
+  <div class="explainer-grid">
+    {% for lane in lanes %}
+    <div class="counter-panel">
+      <div>
+        <div class="counter-label">{{ lane.title }}</div>
+        <div class="line-note">{{ lane.sub }}</div>
+      </div>
+      <div class="plan-chips"><span class="plan-chip" id="{{ lane.key }}-scan">not run yet</span><span class="plan-note" id="{{ lane.key }}-note"></span></div>
+      <div class="page-grid" id="{{ lane.key }}-grid"></div>
+      <div class="line-note" id="{{ lane.key }}-legend"></div>
+      <div class="metric-grid">
+        <div class="metric-cell"><div class="label">Rows examined</div><div class="value" id="{{ lane.key }}-examined">–</div><div class="unit">read from the table</div></div>
+        <div class="metric-cell"><div class="label">Pages touched</div><div class="value" id="{{ lane.key }}-buffers">–</div><div class="unit" id="{{ lane.key }}-buffers-unit">8 kB each</div></div>
+        <div class="metric-cell"><div class="label">Rows returned</div><div class="value" id="{{ lane.key }}-returned">–</div><div class="unit">matching the filter</div></div>
+      </div>
+      <details class="plan-toggle">
+        <summary>Plan steps</summary>
+        <div class="plan-blocks"><pre id="{{ lane.key }}-plan">Not run yet.</pre></div>
+      </details>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="counter-panel" id="summary" style="display:none">
+    <div class="counter-label">Measured by PostgreSQL</div>
+    <div class="bar-row"><span class="bar-code">no index</span><div class="bar-track"><div class="bar-fill bad" id="bar-off" style="width:100%"></div></div><span class="bar-value" id="ms-off"></span></div>
+    <div class="bar-row"><span class="bar-code">index</span><div class="bar-track"><div class="bar-fill good" id="bar-on" style="width:0%"></div></div><span class="bar-value" id="ms-on"></span></div>
+    <div class="line-note" id="verdict"></div>
+  </div>
+</main>
+
+{{ indexing_data|json_script:"indexing-data" }}
+<script src="{% static 'shows/indexing.js' %}"></script>
+{% endblock %}

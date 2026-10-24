@@ -1,58 +1,87 @@
-// Plain DOM JavaScript, no framework. Drives the step/play/reset animation
-// for the CURRENT relationship + mode (switching those reloads the page,
-// see the links in explainer.html) using the real measured numbers Django
-// put into the "explainer-data" JSON script tag.
+// Plain DOM JavaScript, no framework. Drives the step/play/reset buttons for
+// the CURRENT relationship + mode (switching those reloads the page, see the
+// links in explainer.html).
+//
+// Step and Play really run the queries: each press calls /explainer/step/,
+// Django runs the next few queries of the loop against the database and sends
+// back their SQL, their time and the result rows. Nothing here is replayed.
+// The numbers in the "explainer-data" JSON tag are only the saved benchmark
+// (used for the progress bar before the run finishes and for the other version).
 
 const data = JSON.parse(document.getElementById("explainer-data").textContent);
 const rel = data.relationships[data.rel];
 const current = rel[data.mode];
 const other = rel[data.mode === "naive" ? "opt" : "naive"];
 const PLAY_SPEED = 5; // matches the design's default speed (range was 1-10)
+const RESULT_ROWS_SHOWN = 12;
 
-// SQL text shown in the log. Close enough to the real SQL to teach the
-// shape of each query; column lists are shortened with "...".
-const SQL = {
-  shows: 'SELECT ... FROM "shows_show" ORDER BY "shows_show"."id" ASC',
-  join: 'SELECT ... FROM "shows_show" LEFT OUTER JOIN "shows_network" ON ("shows_show"."network_id" = "shows_network"."id") ORDER BY "shows_show"."id" ASC',
-  network: 'SELECT ... FROM "shows_network" WHERE "shows_network"."id" = %s LIMIT 21',
-  episode: 'SELECT ... FROM "shows_episode" WHERE "shows_episode"."show_id" = %s',
-  episodesIn: 'SELECT ... FROM "shows_episode" WHERE "shows_episode"."show_id" IN (%s, %s, ... ' + data.showCount + ' ids)',
-};
-
-let count = 0;
+// What the database has sent back so far.
+let sqlList = [];      // real SQL, one string per query
+let resultRows = [];   // rows the loop has produced: [show name, network name or episode count]
+let serverMs = 0;      // time Django spent running the queries (summed over all steps)
+let done = false;      // true once the loop has finished
+let busy = false;      // true while a request is in flight
+let runId = 0;         // bumped by Reset so a late response is thrown away
 let playing = false;
-let timer = null;
+let errorText = "";
 
-function sqlForStep(i) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function noteForStep(i) {
   if (i === 1) {
     if (data.rel === "network" && data.mode === "opt") {
-      return { sql: SQL.join, note: "Shows and their networks in one JOIN", kind: "base" };
+      return { note: "Shows and their networks in one JOIN", kind: "base" };
     }
-    return { sql: SQL.shows, note: "Loads all " + data.showCount + " shows", kind: "base" };
+    return { note: "Loads all " + data.showCount + " shows", kind: "base" };
   }
   if (data.mode === "opt") {
     return {
-      sql: SQL.episodesIn,
       note: "prefetch_related: every episode for all " + data.showCount + " shows, attached in Python",
       kind: "good",
     };
   }
   if (data.rel === "network") {
     return {
-      sql: SQL.network,
       note: "show.network, lazy load for show " + (i - 1) + " of " + data.withNetworkCount + " with a network",
       kind: "bad",
     };
   }
   return {
-    sql: SQL.episode,
     note: "show.episodes.all() for show " + (i - 1) + " of " + data.showCount,
     kind: "bad",
   };
 }
 
+// Asks Django to run the next `n` queries and adds what comes back.
+async function runNextQueries(n) {
+  if (busy || done) return;
+  busy = true;
+  errorText = "";
+  const myRun = runId;
+  render();
+  try {
+    const url = data.stepUrl + "?rel=" + data.rel + "&mode=" + data.mode + "&start=" + sqlList.length + "&n=" + n;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const step = await response.json();
+    if (myRun !== runId) return; // Reset was pressed while waiting
+    sqlList = sqlList.concat(step.sql);
+    resultRows = resultRows.concat(step.results);
+    serverMs += step.ms;
+    done = step.done;
+  } catch (error) {
+    playing = false;
+    errorText = "Could not run the queries (" + error.message + "). Is the Django server running?";
+  } finally {
+    if (myRun === runId) busy = false;
+    render();
+  }
+}
+
 function lineNoteFor(count) {
-  if (count === 0) return "Press Step to run the next query.";
+  if (count === 0) return "Press Step or Play to run the queries on the database.";
   if (count === 1) {
     if (data.mode === "opt" && data.rel === "network") {
       return "The for loop evaluates the queryset. select_related adds a JOIN, so each show arrives with its network.";
@@ -68,14 +97,19 @@ function lineNoteFor(count) {
 }
 
 function render() {
-  const total = current.total;
-  const done = count >= total;
+  const count = sqlList.length;
+  // Until the loop finishes the total is only the saved benchmark's number.
+  const total = done ? count : Math.max(current.total, count);
 
   document.getElementById("fn-name").textContent = current.fn + "()";
   document.getElementById("exp-id").textContent = "experiment " + current.code;
   document.getElementById("count").textContent = count;
   document.getElementById("total").textContent = total;
-  document.getElementById("footnote").textContent = data.rel === "network" ? rel.footnote : "";
+  const footnote = data.rel === "network" ? rel.footnote : "";
+  document.getElementById("footnote").textContent = footnote;
+  document.getElementById("live-status").textContent = errorText ||
+    (busy ? "Running on the database..." : done ? "Finished: every query above was run by Django just now." :
+     count ? "Paused. Each press runs the next queries for real." : "Nothing has run yet.");
 
   const countColor = data.mode === "naive" && count > 1 ? "var(--bad)" : count ? "var(--good)" : "var(--ink)";
   document.getElementById("counter-value").style.color = countColor;
@@ -117,7 +151,7 @@ function render() {
   } else {
     emptyBox.style.display = "none";
     for (let i = count; i >= Math.max(1, count - 9); i--) {
-      const q = sqlForStep(i);
+      const q = noteForStep(i);
       const row = document.createElement("div");
       row.className = "sql-row";
       if (i === count) row.style.background = "var(--soft)";
@@ -127,7 +161,7 @@ function render() {
       const body = document.createElement("div");
       const sqlLine = document.createElement("span");
       sqlLine.className = "sql";
-      sqlLine.textContent = q.sql;
+      sqlLine.textContent = sqlList[i - 1];
       const note = document.createElement("span");
       note.className = "note";
       note.style.color = q.kind === "bad" ? "var(--bad)" : q.kind === "good" ? "var(--good)" : "var(--muted)";
@@ -147,51 +181,78 @@ function render() {
     }
   }
 
+  // Results the loop has produced so far, newest first.
+  const resultBox = document.getElementById("result-rows");
+  resultBox.innerHTML = "";
+  document.getElementById("result-count").textContent = resultRows.length + " rows";
+  document.getElementById("result-empty").style.display = resultRows.length ? "none" : "block";
+  const secondColumn = data.rel === "network" ? "" : " episodes";
+  for (let i = resultRows.length; i >= Math.max(1, resultRows.length - RESULT_ROWS_SHOWN + 1); i--) {
+    const row = document.createElement("div");
+    row.className = "sql-row";
+    const n = document.createElement("span");
+    n.className = "n";
+    n.textContent = "#" + i;
+    const text = document.createElement("span");
+    text.className = "sql";
+    text.textContent = resultRows[i - 1][0] + "  →  " + resultRows[i - 1][1] + secondColumn;
+    row.appendChild(n);
+    row.appendChild(text);
+    resultBox.appendChild(row);
+  }
+
   // Finished state.
   document.getElementById("done-grid").style.display = done ? "grid" : "none";
   if (done) {
-    document.getElementById("measured-ms").textContent = current.ms + " ms";
+    document.getElementById("measured-ms").textContent = Math.round(serverMs * 100) / 100 + " ms";
     const otherLabel = other.total + (other.total === 1 ? " query" : " queries");
-    document.getElementById("other-summary").textContent = otherLabel + " · " + other.ms + " ms";
+    document.getElementById("other-summary").textContent = otherLabel + " · " + other.ms + " ms (saved benchmark)";
   }
 
   document.getElementById("play-btn").textContent = playing ? "Pause" : done ? "Replay" : "Play";
 }
 
 function stop() {
-  clearInterval(timer);
-  timer = null;
   playing = false;
 }
 
-function step() {
+function resetState() {
+  runId++;
+  sqlList = [];
+  resultRows = [];
+  serverMs = 0;
+  done = false;
+  busy = false;
+  errorText = "";
+}
+
+async function step() {
   stop();
-  count = Math.min(current.total, count + 1);
-  render();
+  await runNextQueries(1);
 }
 
-function tick() {
-  const add = Math.max(1, Math.round(count * 0.012 * PLAY_SPEED));
-  count = Math.min(current.total, count + add);
-  render();
-  if (count >= current.total) stop();
-}
-
-function togglePlay() {
+async function togglePlay() {
   if (playing) {
     stop();
     render();
     return;
   }
-  if (count >= current.total) count = 0;
+  if (done) resetState(); // Replay: run it all again from the start
   playing = true;
-  timer = setInterval(tick, 60);
+  render();
+  while (playing && !done) {
+    // Bigger batches as the count grows, so long runs still finish quickly.
+    const batch = Math.min(200, Math.max(1, Math.round(sqlList.length * 0.012 * PLAY_SPEED)));
+    await runNextQueries(batch);
+    await sleep(60);
+  }
+  playing = false;
   render();
 }
 
 function reset() {
   stop();
-  count = 0;
+  resetState();
   render();
 }
 

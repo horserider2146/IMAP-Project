@@ -338,3 +338,10 @@ details.plan-toggle summary::-webkit-details-marker { display: none; }
 .sql-row .note { font-size: 12px; margin-top: 3px; }
 .sql-log-empty { padding: 60px 18px; text-align: center; color: var(--muted); font-size: 14px; }
 .sql-log-hidden { padding: 10px 18px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+/* ---------- Indexing page ---------- */
+.page-grid { display: grid; grid-template-columns: repeat(auto-fill, 12px); gap: 3px; padding: 10px; background: var(--codebg); border-radius: var(--radius); min-height: 40px; }
+.page-cell { width: 12px; height: 12px; border-radius: 2px; background: var(--line); }
+.page-cell.lit-off { background: var(--bad); }
+.page-cell.lit-on { background: var(--good); }
+#summary .bar-row { grid-template-columns: 70px minmax(0, 1fr) 90px; }
